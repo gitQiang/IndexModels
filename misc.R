@@ -1,16 +1,23 @@
-rateOne <- function(newData,weekI,dim="day"){
-        L <- c(1,7,30,90)
-        Lweek <- c(1,1,4,12)
-        ds <- c("day","week","month","season")
-        Lone <- L[ds==dim]
-        Ltwo <- Lweek[ds==dim]
-        
-        rates <- rep(0,ncol(newData)-1)
-        subs2 <- weekI+1
-        subs1 <- setdiff(2:ncol(newData), subs2)
-        
-        rates[subs1-1] <- rate0(newData,Lone,subs1)
-        rates[subs2-1] <- rate0(newData,Ltwo,subs2)
+rateOne <- function(newData,weekI,d,flag=2){
+        if(flag==1){
+                rates <- matrix(0,4,ncol(newData)-1)
+                L <- c(1,7,30,90)
+                Lweek <- c(1,1,4,12)
+                
+                subs2 <- weekI+1
+                subs1 <- setdiff(2:ncol(newData), subs2)
+                
+                Lone <- L[d]
+                Ltwo <- Lweek[d]
+                rates[,subs1-1] <- rate0(newData,Lone,subs1)
+                rates[,subs2-1] <- rate0(newData,Ltwo,subs2)    
+        }else if(flag==2){
+                gDate <- groupDate(newData[,1])
+                gs <- gDate[,d]
+                rates <- rate1(newData,gs)
+                rates[is.na(rates)] <- 0
+        }
+        rownames(rates) <- c("min","mean","median","max")
         
         rates
 }
@@ -24,12 +31,32 @@ rate0 <- function(newData,Lone,subs){
                 seq1 <- subs[(n-Lone+1):n]
                 seq2 <- subs[max(0,n-2*Lone+1):(n-Lone)]
                 
-                if(Lone < 20){
-                        ( mean(x[seq1]) - mean(x[seq2]) )/( mean(x[seq2]) )
-                }else{
-                        ( median(x[seq1]) - median(x[seq2]) )/( median(x[seq2]) )
-                }
+                c(
+                        ( min(x[seq1]) - min(x[seq2]) )/( min(x[seq2]) ),
+                        ( mean(x[seq1]) - mean(x[seq2]) )/( mean(x[seq2]) ),
+                        ( median(x[seq1]) - median(x[seq2]) )/( median(x[seq2]) ),
+                        ( max(x[seq1]) - max(x[seq2]) )/( max(x[seq2]) )
+                )
         })    
+}
+
+rate1 <- function(newData,gs){
+        
+        sapply(2:ncol(newData), function(i) {
+                xsub <- !is.na(as.numeric(newData[,i]))
+                x <- as.numeric(newData[xsub,i])
+                onet <- gs[xsub]
+                seq1 <- which(onet==max(onet))
+                seq2 <- which( onet==max(onet[onet!=max(onet)]) )
+                
+                c(
+                ( min(x[seq1]) - min(x[seq2]) )/( min(x[seq2]) ),
+                ( mean(x[seq1]) - mean(x[seq2]) )/( mean(x[seq2]) ),
+                ( median(x[seq1]) - median(x[seq2]) )/( median(x[seq2]) ),
+                ( max(x[seq1]) - max(x[seq2]) )/( max(x[seq2]) )
+                )
+                })
+        
 }
 
 IndexModel_1 <- function(Indexs,rates){
@@ -41,6 +68,32 @@ IndexModel_1 <- function(Indexs,rates){
         
         c(Ind0,mean(mer2[,2]))    
 
+}
+
+IndexModel_2 <- function(Indexs,rates,ws,flag=1){
+        
+        if(flag==1){
+                tmp <- weighted.mean(rates,ws)
+                c(tmp/length(ws),tmp)
+        }else if(flag==2){
+                labs <- unique(Indexs[,4])
+                r0 <- rep(0,length(labs))
+                for(i in 1:length(labs)){
+                        tmpsub <- which(Indexs[,4]==labs[i])
+                        r0[i] <- weighted.mean(rates[tmpsub],ws[tmpsub])
+                }
+                
+                ws1 <- as.matrix(aggregate(ws, by=list(Indexs[,4]), mean))
+                ws2M  <- cbind(ws1[,1], Indexs[match(ws1[,1], Indexs[,4]),5])
+                lab2 <- unique(ws2M[,2])
+                r1 <- rep(0,length(lab2))
+                for(i in 1:length(lab2)){
+                        tmpsub <- which(labs %in% ws2M[ws2M[,2]==lab2[i],1])
+                        r1[i] <- weighted.mean(r0[tmpsub],ws1[match(labs[tmpsub],ws1[,1]),2])
+                }
+                c((sum(r1>0)-sum(r1<0))/length(r1), mean(r1))
+        }
+        
 }
 
 fillWeek <- function(Indexs,rawData){
@@ -57,48 +110,65 @@ fillWeek <- function(Indexs,rawData){
         newData
 }
 
-curveOne <- function(newData, Indexs,weekI){
+curveOne <- function(rawData, Indexs,weekI, flag=2){
         
         ptaP <- pta_pricef()
-        ptaweek <- as.matrix(ptaP[,2,drop=FALSE])
-        rownames(ptaweek) <- ptaP[,1]
-        mode(ptaweek) <- "numeric"
-        weekp <- groupPredict(ptaweek)  
+        gDate <- groupDate(ptaP[,1])
+        ptaW <- aggregate(as.numeric(ptaP[,2]), by=list(gDate[,2]), mean)
         
         subs2 <- weekI+1
-        subs1 <- setdiff(2:ncol(newData), subs2)
-        corV <- rep(-2,ncol(newData)-1)
+        subs1 <- setdiff(2:ncol(rawData), subs2)
+        gDate1 <- groupDate(rawData[,1])
         
+        corV <- rep(-2,ncol(rawData)-1)
+        
+        ###
         Lone=90
-        interD <- intersect(newData[,1],ptaP[,1])
-        y <- as.numeric(ptaP[ptaP[,1] %in% interD,2])
+        inDay <- intersect(gDate[,1],gDate1[,1])
+        y <- as.numeric(ptaP[match(inDay,ptaP[,1]), 2])
+        sub0 <- match(inDay,rawData[,1])
         corV[subs1-1] <- sapply(subs1, function(i){
                 #print(i)
-                x <- as.numeric(newData[newData[,1] %in% interD,i])
-                subs <- which(!is.na(x) & !is.na(y))
-                n <- length(subs)
+                x <- as.numeric(rawData[sub0,i])
+                subs <- which(!is.na(x))
                 
-                seq1 <- subs[max(0,n-2*Lone+1):n]
-                cor(x[seq1],y[seq1])
+                if(flag==1){
+                        n <- length(subs)
+                        seq1 <- subs[max(0,n-2*Lone+1):n]
+                        cor(x[seq1],y[seq1])
+                }else{
+                        cor(x[subs],y[subs])
+                }
         })
         
         Lone=12
         corV[subs2-1] <- sapply(subs2, function(i){
                 #print(i)
-                tmp <- !is.na(newData[,i])
-                x0 <- newData[tmp,i,drop=FALSE]
-                mode(x0) <- "numeric"
-                rownames(x0) <- paste(year(newData[tmp,1]),week(newData[tmp,1]),sep="-")
+                xsub <- !is.na(as.numeric(rawData[,i]))
+                if(flag==1 | flag==3){
+                        tmpx <- rawData[xsub,i]
+                        inweek <- intersect(gDate[,2],gDate1[xsub,2])
+                        
+                        xg <- aggregate(as.numeric(tmpx), by=list(gDate1[xsub,2]),mean)
+                        x <- xg[match(inweek,xg[,1]),2]
+                        y <- as.numeric(ptaW[match(inweek,ptaW[,1]), 2]) 
+                }
                 
-                interD <- intersect(rownames(weekp),rownames(x0))
-                x <- x0[interD, 1]
-                y <- weekp[interD, 1]
-                
-                subs <- which(!is.na(x) & !is.na(y))
-                n <- length(subs)
-                
-                seq1 <- subs[max(0,n-2*Lone+1):n]
-                cor(x[seq1],y[seq1])
+                if(flag==1){
+                        n <- length(x)
+                        seq1 <- max(0,n-2*Lone+1):n
+                        if(sd(x[seq1])==0) print(i)
+                        cor(x[seq1],y[seq1])
+                }else if(flag==2){
+                        tmpx <- rawData[xsub,c(1,i)]
+                        inD <- intersect(tmpx[,1],ptaP[,1])
+                        x <- as.numeric(tmpx[match(inD,tmpx[,1]),2])
+                        y <- as.numeric(ptaP[match(inD,ptaP[,1]),2])
+                        cor(x,y)
+                }else if(flag==3){
+                        cor(x,y)
+                }
+                #print(cor(x,y))
         })
         
         corV[is.na(corV)] <- 0
@@ -106,7 +176,7 @@ curveOne <- function(newData, Indexs,weekI){
         ## random 1000 cor 3*sd ~~ 0.2
         subs <- which(corV>0.2)
         
-        subs
+        list(subs=subs,ws=corV[subs])
 }
 
 groupDate <- function(date1){
@@ -122,6 +192,7 @@ groupDate <- function(date1){
         gs2 <- paste(year(useDates),m1,sep="-")
         gs3 <- paste(year(useDates),quarter(useDates),sep="-")
         
+        useDates <- as.character(useDates)
         useDates <- cbind(useDates,gs1,gs2,gs3)
         useDates
 }
