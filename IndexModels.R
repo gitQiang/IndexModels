@@ -1,21 +1,21 @@
 rm(list=ls())
 gc()
-
-#source("//BJB-327/IndexModels/misc.R")
-#datapath <- "E:/HQ/IndexModels/价格指标Wind"
-
+setwd("D:/code/IndexModels")
 source("misc.R")
-datapath <- "//BJB-155/IndexModels/价格指标Wind"
 
-##### the initial Index model
+### read input data =====
+datapath <- "//BJB-155/IndexModels/价格指标Wind"
 Indexs <- read.delim(paste(datapath,"/IDs_LABs.txt",sep=""),sep="\t")
-day <- '2016-08-26' ##as.character(Sys.Date())
-rawData <- read.csv(paste(datapath,"/WindPriceIndex_",day,".csv",sep=""))
-rawData <- as.matrix(rawData)
+day <- '2016-09-05' ##as.character(Sys.Date())
+tday <- "2016-08-31"
+rawData <- read_rawData(day,tday,Indexs,flag=1)
+
+### delete constant variable =====
 subs <- sapply(2:ncol(rawData), function(i) sd(as.numeric(rawData[!is.na(rawData[,i]),i]))>0)
 rawData <- rawData[ ,c(TRUE,subs)]
 Indexs <- Indexs[subs, ]
 
+## selected features and weights =====
 #weekI <- which(Indexs[,7]=="周")
 kv <- sapply(2:ncol(rawData), function(i) sum(is.na(rawData[,i]))/sum(!is.na(rawData[,i])))
 weekI <- which(kv>=4)
@@ -27,13 +27,15 @@ ws <- tmpr$ws
 newData <- rawData[,c(1,subs+1)]
 Indexs <- Indexs[subs, ]
 
+### get the Index supply-demand =====
 kv <- sapply(2:ncol(newData), function(i) sum(is.na(newData[,i]))/sum(!is.na(newData[,i])))
 weekI <- which(kv>=4)
-r1 <- matrix(0,4,4,dimnames = list(c("min","mean","median","max"),c("day","week","month","season")))
-r2 <- matrix(0,4,4,dimnames = list(c("min","mean","median","max"),c("day","week","month","season")))
+n.method <- 5
+r1 <- matrix(0,n.method,4,dimnames = list(c("min","mean","median","max","start-end"),c("day","week","month","season")))
+r2 <- matrix(0,n.method,4,dimnames = list(c("min","mean","median","max","start-end"),c("day","week","month","season")))
 for(d in 1:4){
         rates <- rateOne(newData,weekI,d,flag=2)
-        for(j in 1:4){
+        for(j in 1:n.method){
                 #tmp <- IndexModel_1(Indexs,rates[j,])
                 #tmp <- IndexModel_2(Indexs,rates[j,],ws,flag=2)
                 
@@ -47,5 +49,5 @@ for(d in 1:4){
 print(r1)
 print(r2)
 
-r0 <- pta_rates()
-print(r0)
+# r0 <- pta_rates(tday)
+# print(r0)

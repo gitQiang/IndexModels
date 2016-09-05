@@ -1,3 +1,17 @@
+read_rawData <- function(day,tday,Indexs,flag=1){
+        
+        datapath <- "//BJB-155/IndexModels/价格指标Wind"
+        rawData <- read.csv(paste(datapath,"/WindPriceIndex_",day,".csv",sep=""))
+        if(flag==2){
+                subs <- which(colnames(rawData) %in% Indexs[Indexs[,9]==1,2])
+                rawData <- rawData[, c(1, subs)]
+        }
+        
+        rawData <- rawData[rawData[,1] <= tday,  ]
+        rawData <- as.matrix(rawData)   
+        rawData        
+}
+
 rateOne <- function(newData,weekI,d,flag=2){
         if(flag==1){
                 rates <- matrix(0,4,ncol(newData)-1)
@@ -17,7 +31,7 @@ rateOne <- function(newData,weekI,d,flag=2){
                 rates <- rate1(newData,gs)
                 rates[is.na(rates)] <- 0
         }
-        rownames(rates) <- c("min","mean","median","max")
+        rownames(rates) <- c("min","mean","median","max","start-end")
         
         rates
 }
@@ -35,7 +49,8 @@ rate0 <- function(newData,Lone,subs){
                         ( min(x[seq1]) - min(x[seq2]) )/( min(x[seq2]) ),
                         ( mean(x[seq1]) - mean(x[seq2]) )/( mean(x[seq2]) ),
                         ( median(x[seq1]) - median(x[seq2]) )/( median(x[seq2]) ),
-                        ( max(x[seq1]) - max(x[seq2]) )/( max(x[seq2]) )
+                        ( max(x[seq1]) - max(x[seq2]) )/( max(x[seq2]) ),
+                        ( x[max(seq1)] - x[min(seq1)] )/x[min(seq1)]
                 )
         })    
 }
@@ -53,7 +68,8 @@ rate1 <- function(newData,gs){
                 ( min(x[seq1]) - min(x[seq2]) )/( min(x[seq2]) ),
                 ( mean(x[seq1]) - mean(x[seq2]) )/( mean(x[seq2]) ),
                 ( median(x[seq1]) - median(x[seq2]) )/( median(x[seq2]) ),
-                ( max(x[seq1]) - max(x[seq2]) )/( max(x[seq2]) )
+                ( max(x[seq1]) - max(x[seq2]) )/( max(x[seq2]) ),
+                ( x[max(seq1)] - x[min(seq1)] )/x[min(seq1)]
                 )
                 })
         
@@ -74,7 +90,7 @@ IndexModel_2 <- function(Indexs,rates,ws,flag=1){
         
         if(flag==1){
                 tmp <- weighted.mean(rates,ws)
-                c(tmp/length(ws),tmp)
+                c(tmp,(sum(rates>0)-sum(rates<0))/length(rates))
         }else if(flag==2){
                 labs <- unique(Indexs[,4])
                 r0 <- rep(0,length(labs))
@@ -197,30 +213,32 @@ groupDate <- function(date1){
         useDates
 }
 
-pta_pricef <- function(){
+pta_pricef <- function(tday=""){
 
         options(stringsAsFactors = FALSE)
-        #ptaP <- read.delim("E:/HQ/IndexModels/data/PTA华东市场价格.txt",sep="\t")
-        ptaP <- read.delim("//BJB-155/IndexModels/data/PTA华东市场价格.txt",sep="\t")
-        ptaP <- ptaP[-1, ]
+        #ptaP <- read.delim("//BJB-155/IndexModels/data/PTA华东市场价格.txt",sep="\t")
+        #ptaP <- ptaP[-1, ]
+        day <- as.character(Sys.Date())
+        ptaP <- read.delim(paste("//BJB-155/IndexModels/价格指标Wind/WindPTAPrice_",day,".txt",sep=""), sep="\t")
         ptaP[,2] <- gsub(",","",ptaP[,2])
         ptaP[,2] <- gsub(" ","",ptaP[,2])
         ptaP <- ptaP[!grepl("数据来源",ptaP[,1]), ]
         ptaP <- ptaP[ptaP[,1]!="", ]
         ptaP <- ptaP[!is.na(as.numeric(ptaP[,2])), ]
         ptaP <- as.matrix(ptaP)
+        if(tday!="") ptaP <- ptaP[ptaP[,1] <= tday, ]
         
         ptaP
 }
 
-pta_rates <- function(){
+pta_rates <- function(day=""){
         
-        ptaP <- pta_pricef()
+        ptaP <- pta_pricef(day)
         gDate <- groupDate(ptaP[,1])
         x <- as.numeric(ptaP[,2])
         
         L=4
-        rone <- matrix(0,4,L)
+        rone <- matrix(0,5,L)
         for(i in 1:L){
                 onet <- gDate[,i]
                 seq1 <- which(onet==max(onet))
@@ -230,9 +248,10 @@ pta_rates <- function(){
                 rone[2,i] <- ( mean(x[seq1]) - mean(x[seq2]) )/( mean(x[seq2]) )
                 rone[3,i] <- ( median(x[seq1]) - median(x[seq2]) )/( median(x[seq2]) )
                 rone[4,i] <- ( max(x[seq1]) - max(x[seq2]) )/( max(x[seq2]) )
+                rone[5,i] <- ( x[max(seq1)] - x[min(seq1)] )/x[min(seq1)]
         }
         colnames(rone) <- c("day","week","month","season")
-        rownames(rone) <- c("min","mean","median","max")
+        rownames(rone) <- c("min","mean","median","max","start-end")
         
         rone
 }

@@ -13,3 +13,12 @@ newData <- w_edb_data$Data
 w.stop()
 
 write.csv(newData,file=paste(datapath,"/WindPriceIndex_",day,".csv",sep=""),row.names=FALSE,quote=FALSE)
+
+
+## PTA 华东地区市场平均价
+w.start()
+w_edb_data<-w.edb('S5442369','2012-01-01',day,'')
+newData <- w_edb_data$Data
+w.stop()
+write.table(newData,file=paste(datapath,"/WindPTAPrice_",day,".txt",sep=""),row.names=FALSE,quote=FALSE,sep="\t")
+
